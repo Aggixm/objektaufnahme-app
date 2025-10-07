@@ -362,3 +362,4 @@ if st.button("📄 PDF erzeugen"):
                     c.drawImage(img_reader, margin_x+8, y-140, width=140, preserveAspectRatio=True, mask="auto")
                     y -= 150
                 else:
+                    pass
