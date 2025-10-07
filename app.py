@@ -205,4 +205,274 @@ terrasse_anz = st.text_input("Terrassen - Anzahl")
 terrasse_groesse = st.text_input("Terrassen - Gesamtgröße (m²)")
 garten_groesse = st.text_input("Garten - Größe (m²)")
 garten_zustand = st.selectbox("Zustand Garten", ZUSTAND)
-garage_anz =_
+garage_anz = st.text_input("Garage - Anzahl")
+tiefgarage_anz = st.text_input("Tiefgarage - Anzahl")
+stellplatz_anz = st.text_input("Stellplatz - Anzahl")
+carport_anz = st.text_input("Carport - Anzahl")
+aussen_sonstiges = st.text_area("Außenbereich - Sonstiges")
+
+st.markdown("---")
+
+# --- Technische Ausstattung ---
+st.header("Technische Ausstattung")
+heizung = st.selectbox("Heizungsart", ["Gas","Öl","Wärmepumpe","Fernwärme","Elektro","Sonstiges"])
+heizung_bj = st.text_input("Heizung Baujahr")
+heizung_zust = st.selectbox("Zustand Heizung", ZUSTAND)
+warmwasser = st.selectbox("Warmwasser", ["zentral","dezentral"])
+elektrik = st.text_input("Elektrik - Hinweise (Zähler, Absicherung)")
+internet = st.selectbox("Internetanschluss", ["DSL","Glasfaser","Mobil","keine Angabe"])
+tech_sonstiges = st.text_area("Technik - Sonstiges")
+
+st.markdown("---")
+
+# --- Dokumente & Fotos ---
+st.header("Dokumente & Fotos")
+uploaded_docs = st.file_uploader("Dokumente hochladen (WEG-Protokolle, Energieausweis, Grundbuch, Grundriss etc.)", accept_multiple_files=True, type=["pdf","png","jpg","jpeg","docx"])
+uploaded_photos = st.file_uploader("Allgemeine Fotos (Innen/Außen) (mehrfach)", accept_multiple_files=True, type=["png","jpg","jpeg"])
+
+st.markdown("---")
+
+# --- Sonstiges & Mieteinnahmen ---
+st.header("Weitere Angaben")
+vermietet = st.selectbox("Vermietet?", ["Nein","Ja"])
+if vermietet == "Ja":
+    mieteinnahmen = st.text_input("Mieteinnahmen (monatlich / jährlich)")
+else:
+    mieteinnahmen = ""
+freitext_sonstiges = st.text_area("Sonstiges / Besonderheiten")
+
+st.markdown("---")
+
+# --- helper: convert uploaded image/file to bytes (for ReportLab) ---
+def image_file_to_bytes(file) -> bytes:
+    try:
+        img = Image.open(file)
+        bio = io.BytesIO()
+        img.save(bio, format="PNG")
+        return bio.getvalue()
+    except Exception:
+        return None
+
+# --- PDF creation ---
+if st.button("📄 PDF erzeugen", type="primary"):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    margin_x = 40
+    y = height - 50
+
+    # header
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(margin_x, y, "Aggixm Immobilien - Objektaufnahme")
+    c.setFont("Helvetica", 10)
+    c.drawString(margin_x, y-18, f"Datum: {aufnahme_datum}    Beteiligte: {teilnehmende}")
+    y -= 36
+
+    def new_page_if_needed(y_current, min_space=120):
+        """
+        Returns updated y position. If not enough space, start a new page and reset y.
+        """
+        if y_current < min_space:
+            c.showPage()
+            return height - 50
+        return y_current
+
+    # Allgemeine Daten
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Allgemeine Objektdaten")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    general = [
+        ("Objektart", objektart),
+        ("Adresse", f"{adresse}, {plz} {ort}"),
+        ("Baujahr", baujahr),
+        ("Gebäudeart", ", ".join(gebaeudeart) + (f"; {gebaeudeart_sonstiges}" if gebaeudeart_sonstiges else "")),
+        ("Wohnfläche (m²)", wohnflaeche),
+        ("Grundstück (m²)", grundstueck),
+        ("Eigentümer", eigentuemer),
+        ("Erbbaurecht", erbbaurecht),
+        ("Nießbrauch", niessbrauch),
+        ("Allg. Sonstiges", freitext_objekt_sonst or "")
+    ]
+    for k,v in general:
+        y = new_page_if_needed(y, 80)
+        c.drawString(margin_x, y, f"{k}: {v}")
+        y -= 12
+
+    y -= 8
+
+    # Gebäudedaten
+    y = new_page_if_needed(y)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Gebäudedaten")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    if objektart in ["Eigentumswohnung (ETW)", "Mehrfamilienhaus (MFH)"]:
+        rows = [
+            ("Stockwerke", stockwerke),
+            ("Wohneinheiten", wohneinheiten),
+            ("Lage der Wohnung", lage_whg),
+            ("Fahrstuhl", fahrstuhl),
+            ("Zugang", zugang),
+            ("Zustand Gemeinschaftseigentum", gemeinschaftszustand),
+            ("Mieteinnahmen (Gebäude)", mieteinnahmen_building)
+        ]
+    elif objektart == "Gewerbeobjekt":
+        rows = [
+            ("Nutzung", nutzung_art),
+            ("Gewerbefläche (m²)", gewerbeflaeche),
+            ("Raumhöhe (m)", raumhoehe),
+            ("Bodenbelastbarkeit", bodenbelast),
+            ("Zugang", zugang_gewerbe),
+            ("Zustand", zustand_gewerbe),
+            ("Mieteinnahmen", mieteinnahmen_building)
+        ]
+    else:
+        rows = [("Mieteinnahmen", mieteinnahmen_building)]
+    for k,v in rows:
+        y = new_page_if_needed(y, 80)
+        c.drawString(margin_x, y, f"{k}: {v}")
+        y -= 12
+
+    y -= 8
+
+    # Innenausstattung
+    y = new_page_if_needed(y)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Innenausstattung")
+    y -= 14
+    c.setFont("Helvetica", 10)
+
+    # Räume
+    for i, room in enumerate(st.session_state.rooms):
+        y = new_page_if_needed(y, 140)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin_x, y, f"Raum {i+1}: {room.get('name','')}")
+        y -= 14
+        for k,v in [("Nutzung", room.get("usage","")), ("Fläche (m²)", room.get("area","")), ("Fußbodenart", room.get("floor_type","")), ("Zustand Fußboden", room.get("floor_state","")), ("Zustand Wände", room.get("wall_state","")), ("Notizen", room.get("notes",""))]:
+            c.drawString(margin_x+8, y, f"{k}: {v}")
+            y -= 12
+        # Fotos einbetten
+        for pf in room.get("photos", []) or []:
+            try:
+                img_bytes = image_file_to_bytes(pf)
+                if img_bytes:
+                    reader = ImageReader(io.BytesIO(img_bytes))
+                    y = new_page_if_needed(y, 220)
+                    c.drawImage(reader, margin_x+8, y-140, width=140, preserveAspectRatio=True, mask='auto')
+                    y -= 150
+                else:
+                    c.drawString(margin_x+8, y, f"Foto: {getattr(pf,'name',str(pf))}")
+                    y -= 12
+            except Exception:
+                c.drawString(margin_x+8, y, f"Foto (nicht lesbar): {getattr(pf,'name',str(pf))}")
+                y -= 12
+
+    # Küchen
+    for i, k in enumerate(st.session_state.kitchens):
+        y = new_page_if_needed(y, 140)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin_x, y, f"Küche {i+1}: {k.get('name','')}")
+        y -= 14
+        for kk,vv in [("Einbauküche", k.get("einbau","")), ("Fußbodenart", k.get("floor_type","")), ("Zustand Fußboden", k.get("floor_state","")), ("Zustand Wände", k.get("wall_state","")), ("Notizen", k.get("notes",""))]:
+            c.drawString(margin_x+8, y, f"{kk}: {vv}")
+            y -= 12
+        for pf in k.get("photos", []) or []:
+            try:
+                img_bytes = image_file_to_bytes(pf)
+                if img_bytes:
+                    reader = ImageReader(io.BytesIO(img_bytes))
+                    y = new_page_if_needed(y, 220)
+                    c.drawImage(reader, margin_x+8, y-140, width=140, preserveAspectRatio=True, mask='auto')
+                    y -= 150
+                else:
+                    c.drawString(margin_x+8, y, f"Foto: {getattr(pf,'name',str(pf))}")
+                    y -= 12
+            except Exception:
+                c.drawString(margin_x+8, y, f"Foto (nicht lesbar): {getattr(pf,'name',str(pf))}")
+                y -= 12
+
+    # Bäder
+    for i, b in enumerate(st.session_state.baths):
+        y = new_page_if_needed(y, 140)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin_x, y, f"Bad/WC {i+1}: {b.get('name','')}")
+        y -= 14
+        for kk,vv in [("Art", b.get("type","")), ("Ausstattung", b.get("equip","")), ("Sanierungsjahr", b.get("sanierungsjahr","")), ("Fußbodenart", b.get("floor_type","")), ("Zustand Fußboden", b.get("floor_state","")), ("Zustand Wände", b.get("wall_state","")), ("Notizen", b.get("notes",""))]:
+            c.drawString(margin_x+8, y, f"{kk}: {vv}")
+            y -= 12
+        for pf in b.get("photos", []) or []:
+            try:
+                img_bytes = image_file_to_bytes(pf)
+                if img_bytes:
+                    reader = ImageReader(io.BytesIO(img_bytes))
+                    y = new_page_if_needed(y, 220)
+                    c.drawImage(reader, margin_x+8, y-140, width=140, preserveAspectRatio=True, mask='auto')
+                    y -= 150
+                else:
+                    c.drawString(margin_x+8, y, f"Foto: {getattr(pf,'name',str(pf))}")
+                    y -= 12
+            except Exception:
+                c.drawString(margin_x+8, y, f"Foto (nicht lesbar): {getattr(pf,'name',str(pf))}")
+                y -= 12
+
+    # Abstellflächen
+    for i, s in enumerate(st.session_state.storages):
+        y = new_page_if_needed(y, 80)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin_x, y, f"Abstellfläche {i+1}: {s.get('name','')}")
+        y -= 14
+        for kk,vv in [("Fläche", s.get("area","")), ("Nutzung", s.get("usage","")), ("Zustand", s.get("zust","")), ("Notizen", s.get("notes",""))]:
+            c.drawString(margin_x+8, y, f"{kk}: {vv}")
+            y -= 12
+
+    # Außenbereich
+    y = new_page_if_needed(y)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Außenbereich")
+    y -= 14
+    for k,v in [("Dachform", dachform), ("Fassade", ", ".join(fassade) + (f"; {fassade_sonstiges}" if fassade_sonstiges else "")), ("Wintergarten", wintergarten), ("Wintergarten Fläche (m²)", locals().get("wintergarten_area","")), ("Garten (m²)", garten_groesse), ("Zustand Garten", garten_zustand), ("Balkone Anzahl", balkon_anz), ("Balkone Gesamtgröße", balkon_groesse), ("Terrassen Anzahl", terrasse_anz), ("Terrassen Gesamtgröße", terrasse_groesse), ("Garage Anzahl", garage_anz), ("Tiefgarage Anzahl", tiefgarage_anz), ("Stellplatz Anzahl", stellplatz_anz), ("Carport Anzahl", carport_anz), ("Außen Sonstiges", aussen_sonstiges)]:
+        y = new_page_if_needed(y, 80)
+        c.drawString(margin_x, y, f"{k}: {v}")
+        y -= 12
+
+    # Technik
+    y = new_page_if_needed(y)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Technische Ausstattung")
+    y -= 14
+    for k,v in [("Heizung", heizung), ("Heizung Baujahr", heizung_bj), ("Zustand Heizung", heizung_zust), ("Warmwasser", warmwasser), ("Elektrik", elektrik), ("Internet", internet), ("Technik Sonstiges", tech_sonstiges)]:
+        y = new_page_if_needed(y, 80)
+        c.drawString(margin_x, y, f"{k}: {v}")
+        y -= 12
+
+    # Dokumente: Dateinamen auflisten
+    y = new_page_if_needed(y)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Dokumente (hochgeladen)")
+    y -= 14
+    c.setFont("Helvetica", 10)
+    for f in uploaded_docs or []:
+        name = getattr(f, "name", str(f))
+        y = new_page_if_needed(y, 60)
+        c.drawString(margin_x+8, y, f"- {name}")
+        y -= 12
+
+    # Sonstiges
+    y = new_page_if_needed(y)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin_x, y, "Sonstiges / Notizen")
+    y -= 14
+    for line in (freitext_sonstiges or "").splitlines():
+        y = new_page_if_needed(y, 60)
+        c.drawString(margin_x, y, line)
+        y -= 12
+
+    # finish
+    c.save()
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    st.success("PDF wurde erstellt.")
+    safe_name = adresse.replace(" ", "_") if adresse else "objekt"
+    st.download_button("📥 PDF herunterladen", data=pdf_bytes, file_name=f"objektaufnahme_{safe_name}_{aufnahme_datum}.pdf", mime="application/pdf")
