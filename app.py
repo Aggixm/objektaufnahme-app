@@ -1,4 +1,4 @@
-# app.py - Aggixm Objektaufnahme v2.2 (einzelne Datei)
+# app.py - Aggixm Objektaufnahme v2.3 (einzelne Datei, Foto-Integration)
 import streamlit as st
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
@@ -7,6 +7,7 @@ from reportlab.lib import colors
 from PIL import Image
 import io, datetime
 
+# try pypdf for footer page X of Y
 try:
     from pypdf import PdfReader, PdfWriter
 except Exception:
@@ -14,9 +15,10 @@ except Exception:
     PdfWriter = None
 
 st.set_page_config(page_title="Objektaufnahme - Aggixm", page_icon="🏠", layout="wide")
-st.title("🏠 Objektaufnahme — Aggixm Immobilien (v2.2)")
-st.markdown("Deutsch. iPad-optimiert. PDF: Deckblatt + zweispaltiges Exposé.")
+st.title("🏠 Objektaufnahme — Aggixm Immobilien (v2.3)")
+st.markdown("Deutsch. iPad-optimiert. PDF: Deckblatt + zweispaltiges Exposé mit Fotos.")
 
+# --- Constants ---
 ZUSTAND = ["Neu", "Neuwertig", "Zufriedenstellend", "Abgenutzt"]
 FUSSBODEN = ["Teppich", "Laminat", "Parkett", "Fliese", "Vinyl", "Beton", "Sonstige"]
 GEBAEUDEART = ["Massivbau", "Holzbau", "Fertigbau", "Klinker", "Putzfassade", "Mischbauweise", "Sonstige"]
@@ -51,6 +53,7 @@ def image_file_to_bytes(file):
     except Exception:
         return None
 
+# --- Aufnahmeinformationen ---
 st.header("Aufnahmeinformationen")
 col1, col2 = st.columns([1,2])
 with col1:
@@ -59,6 +62,7 @@ with col2:
     teilnehmende = st.text_input("Teilnehmende Personen (Name, Rolle)")
 st.markdown("---")
 
+# --- Allgemeine Objektdaten ---
 st.header("Allgemeine Objektdaten")
 objektart = st.selectbox("Objektart", ["Einfamilienhaus (EFH)","Eigentumswohnung (ETW)","Mehrfamilienhaus (MFH)","Gewerbeobjekt","Sonstiges"])
 adresse = st.text_input("Straße und Hausnummer", placeholder="Musterstraße 12")
@@ -87,6 +91,7 @@ with cole2:
 freitext_objekt = st.text_area("Sonstiges (Allgemein)")
 st.markdown("---")
 
+# --- Gebäudedaten ---
 st.header("Gebäudedaten")
 if objektart in ["Eigentumswohnung (ETW)","Mehrfamilienhaus (MFH)"]:
     colg1, colg2 = st.columns(2)
@@ -116,6 +121,7 @@ else:
 
 st.markdown("---")
 
+# --- Innenausstattung dynamic ---
 st.header("Innenausstattung (dynamisch)")
 c1,c2,c3,c4 = st.columns([1,1,1,1])
 with c1:
@@ -138,7 +144,7 @@ def render_rooms():
             floor_type = st.selectbox("Fußbodenart", FUSSBODEN, key=f"{key}_floor")
             floor_state = st.selectbox("Zustand Fußboden", ZUSTAND, key=f"{key}_floor_state")
             wall_state = st.selectbox("Zustand Wände", ZUSTAND, key=f"{key}_wall_state")
-            photos = st.file_uploader("Fotos (mehrfach)", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
+            photos = st.file_uploader("Fotos (mehrfach) - wird der Kategorie Innenräume zugeordnet", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
             notes = st.text_area("Notizen", key=f"{key}_notes")
             st.session_state.rooms[i].update({"name":rn,"usage":usage,"area":area,"floor_type":floor_type,"floor_state":floor_state,"wall_state":wall_state,"photos":photos,"notes":notes})
 
@@ -155,7 +161,7 @@ def render_kitchens():
             floor_type = st.selectbox("Fußbodenart", FUSSBODEN, key=f"{key}_floor")
             floor_state = st.selectbox("Zustand Fußboden", ZUSTAND, key=f"{key}_floor_state")
             wall_state = st.selectbox("Zustand Wände", ZUSTAND, key=f"{key}_wall_state")
-            photos = st.file_uploader("Fotos (mehrfach)", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
+            photos = st.file_uploader("Fotos (mehrfach) - wird der Kategorie Küche zugeordnet", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
             notes = st.text_area("Notizen", key=f"{key}_notes")
             st.session_state.kitchens[i].update({"name":rn,"area":area,"einbau":einbau,"einbau_zust":einbau_zust,"floor_type":floor_type,"floor_state":floor_state,"wall_state":wall_state,"photos":photos,"notes":notes})
 
@@ -171,7 +177,7 @@ def render_baths():
             floor_type = st.selectbox("Fußbodenart", FUSSBODEN, key=f"{key}_floor")
             floor_state = st.selectbox("Zustand Fußboden", ZUSTAND, key=f"{key}_floor_state")
             wall_state = st.selectbox("Zustand Wände", ZUSTAND, key=f"{key}_wall_state")
-            photos = st.file_uploader("Fotos (mehrfach)", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
+            photos = st.file_uploader("Fotos (mehrfach) - wird der Kategorie Bäder zugeordnet", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
             notes = st.text_area("Notizen", key=f"{key}_notes")
             st.session_state.baths[i].update({"name":rn,"area":area,"type":art,"equip":equip,"sanierungsjahr":sanj,"floor_type":floor_type,"floor_state":floor_state,"wall_state":wall_state,"photos":photos,"notes":notes})
 
@@ -183,10 +189,22 @@ def render_storages():
             area = st.number_input("Größe (m²)", min_value=0.0, step=0.1, format="%.2f", key=f"{key}_area")
             usage = st.text_input("Nutzung / Zweck", key=f"{key}_usage")
             zust = st.selectbox("Zustand", ZUSTAND, key=f"{key}_state")
+            photos = st.file_uploader("Fotos (mehrfach) - wird der Kategorie Nebenräume zugeordnet", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{key}_photos")
             notes = st.text_area("Notizen", key=f"{key}_notes")
-            st.session_state.storages[i].update({"name":rn,"area":area,"usage":usage,"zust":zust,"notes":notes})
+            st.session_state.storages[i].update({"name":rn,"area":area,"usage":usage,"zust":zust,"photos":photos,"notes":notes})
 
 render_rooms(); render_kitchens(); render_baths(); render_storages()
+
+st.markdown("---")
+
+# Category-level uploads (additional to per-room photos)
+st.header("Fotos - Kategoriezuordnung (optional)")
+photos_outside = st.file_uploader("Fotos Außenbereich / Grundstück", type=["png","jpg","jpeg"], accept_multiple_files=True, key="photos_outside")
+photos_inside = st.file_uploader("Fotos Innenräume (Wohnzimmer, Schlafzimmer, Flur)", type=["png","jpg","jpeg"], accept_multiple_files=True, key="photos_inside")
+photos_kitchen = st.file_uploader("Fotos Küche", type=["png","jpg","jpeg"], accept_multiple_files=True, key="photos_kitchen")
+photos_baths = st.file_uploader("Fotos Bäder / WC", type=["png","jpg","jpeg"], accept_multiple_files=True, key="photos_baths")
+photos_storages = st.file_uploader("Fotos Keller / Nebenräume", type=["png","jpg","jpeg"], accept_multiple_files=True, key="photos_storages")
+photos_tech = st.file_uploader("Fotos Technische Ausstattung", type=["png","jpg","jpeg"], accept_multiple_files=True, key="photos_tech")
 
 st.markdown("---")
 
@@ -227,20 +245,16 @@ tech_sonstiges = st.text_area("Technik - Sonstiges")
 
 st.markdown("---")
 
-st.header("Dokumente & Fotos")
+st.header("Dokumente")
 uploaded_docs = st.file_uploader("Dokumente hochladen (WEG-Protokolle, Energieausweis, Grundbuch, Grundriss etc.)", accept_multiple_files=True, type=["pdf","png","jpg","jpeg","docx"])
-uploaded_photos = st.file_uploader("Allgemeine Fotos (Innen/Außen) (mehrfach)", accept_multiple_files=True, type=["png","jpg","jpeg"])
 
 st.markdown("---")
 
 st.header("Weitere Angaben")
 vermietet = st.selectbox("Vermietet?", ["Nein","Ja"])
-st.write("Wenn vermietet, bitte jährliche Mieteinnahmen und Nebenkosten angeben.")
 if vermietet == "Ja" and not ('mieteinnahmen_jahr' in locals()):
     mieteinnahmen_jahr = st.number_input("Jährliche Mieteinnahmen (€)", min_value=0.0, step=0.01, format="%.2f")
     nebenkosten_jahr = st.number_input("Jährliche Nebenkosten (€)", min_value=0.0, step=0.01, format="%.2f")
-else:
-    pass
 freitext_sonstiges = st.text_area("Sonstiges / Besonderheiten")
 
 st.markdown("---")
@@ -265,7 +279,7 @@ def draw_kv_pair(c, label, value, x, y, label_w=120, line_height=14):
     c.setFont("Helvetica-Bold", 9)
     c.drawString(x, y, label)
     c.setFont("Helvetica", 9)
-    max_chars = 80
+    max_chars = 90
     val = val_str(value, "-")
     s = val
     lines = []
@@ -283,12 +297,47 @@ def new_page_if_needed(c, y_current, min_space=140, width=A4[0], height=A4[1]):
         return height - TOP_MARGIN
     return y_current
 
+def draw_images_two_per_row(c, files, x_start, y, max_w=220, max_h=150, gap=10):
+    if not files:
+        return y
+    per_row = 2
+    cur_x = x_start
+    cur_y = y
+    idx = 0
+    for f in files:
+        try:
+            img = Image.open(f)
+            img.thumbnail((max_w, max_h), Image.ANTIALIAS)
+            bio = io.BytesIO()
+            img.save(bio, format="PNG")
+            bio.seek(0)
+            reader = ImageReader(bio)
+            # compute draw width/height in points roughly from img.size (px)
+            iw, ih = img.size
+            draw_w = iw
+            draw_h = ih
+            c.drawImage(reader, cur_x, cur_y - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True, mask='auto')
+            c.setLineWidth(0.5)
+            c.rect(cur_x, cur_y - draw_h, draw_w, draw_h, stroke=1, fill=0)
+            if idx % per_row == per_row - 1:
+                cur_x = x_start
+                cur_y = cur_y - (max_h + gap)
+            else:
+                cur_x = cur_x + draw_w + gap
+            idx += 1
+        except Exception:
+            continue
+    if idx>0:
+        return cur_y - (max_h + gap)
+    return y
+
 if st.button("📄 PDF erzeugen", type="primary"):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
     y = height - TOP_MARGIN
 
+    # Deckblatt
     y = draw_heading(c, f"Objektaufnahme - {val_str(objektart)}", 50, y)
     c.setFont("Helvetica", 12)
     c.drawString(50, y-10, f"Datum der Aufnahme: {aufnahme_datum}")
@@ -302,10 +351,10 @@ if st.button("📄 PDF erzeugen", type="primary"):
     c.line(50, y-60, width-50, y-60)
     c.showPage()
 
+    # Main content
     y = height - TOP_MARGIN
     y = draw_heading(c, "Objektdaten (Zusammenfassung)", 50, y)
-    left_x = 50
-    right_x = 320
+    left_x = 50; right_x = 320
     col_y = y
     pairs = [
         ("Objektart", val_str(objektart)),
@@ -317,8 +366,8 @@ if st.button("📄 PDF erzeugen", type="primary"):
         ("Eigentümer", val_str(eigentuemer)),
         ("Erbbaurecht", val_str(erbbaurecht)),
         ("Nießbrauchrecht", val_str(niessbrauch)),
-        ("Jährliche Mieteinnahmen (€)", f"{val_str(mieteinnahmen_jahr) if 'mieteinnahmen_jahr' in locals() else '-'}"),
-        ("Jährliche Nebenkosten (€)", f"{val_str(nebenkosten_jahr) if 'nebenkosten_jahr' in locals() else '-'}"),
+        ("Jährliche Mieteinnahmen (€)", f"{val_str(mieteinnahmen_jahr) if 'mieteinnahmen_jahr' in locals() and mieteinnahmen_jahr else '-'}"),
+        ("Jährliche Nebenkosten (€)", f"{val_str(nebenkosten_jahr) if 'nebenkosten_jahr' in locals() and nebenkosten_jahr else '-'}"),
     ]
     for label, value in pairs[:6]:
         col_y = new_page_if_needed(c, col_y)
@@ -329,6 +378,7 @@ if st.button("📄 PDF erzeugen", type="primary"):
         col_y2 = draw_kv_pair(c, label, value, right_x, col_y2)
     y = min(col_y, col_y2) - 12
 
+    # Innenausstattung
     y = new_page_if_needed(c, y)
     y = draw_heading(c, "Innenausstattung - Räume, Küchen, Bäder", 50, y)
     if len(st.session_state.rooms) == 0:
@@ -348,7 +398,17 @@ if st.button("📄 PDF erzeugen", type="primary"):
             notes = val_str(room.get("notes"), "")
             if notes and notes != "-":
                 y = draw_kv_pair(c, "Notizen", notes, 60, y)
+            photos = room.get("photos") or []
+            if photos:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Raum)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos, 80, y, max_w=220, max_h=150)
+            if i == 0 and photos_inside:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Innenräume)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos_inside, 80, y, max_w=220, max_h=150)
 
+    # Kitchens
     y = new_page_if_needed(c, y)
     y = draw_heading(c, "Küchen", 50, y)
     if len(st.session_state.kitchens) == 0:
@@ -365,7 +425,17 @@ if st.button("📄 PDF erzeugen", type="primary"):
             y -= 18
             for kk,vv in [("Größe (m²)", k.get("area")), ("Einbauküche", k.get("einbau")), ("Zustand Einbauküche", k.get("einbau_zust")), ("Fußbodenart", k.get("floor_type")), ("Zustand Fußboden", k.get("floor_state"))]:
                 y = draw_kv_pair(c, kk, val_str(vv), 60, y)
+            photos = k.get("photos") or []
+            if photos:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Küche)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos, 80, y, max_w=220, max_h=150)
+            if i == 0 and photos_kitchen:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Küche - Kategorie)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos_kitchen, 80, y, max_w=220, max_h=150)
 
+    # Bäder
     y = new_page_if_needed(c, y)
     y = draw_heading(c, "Bäder / WC", 50, y)
     if len(st.session_state.baths) == 0:
@@ -382,17 +452,62 @@ if st.button("📄 PDF erzeugen", type="primary"):
             y -= 18
             for kk,vv in [("Größe (m²)", b.get("area")), ("Art", b.get("type")), ("Ausstattung", b.get("equip")), ("Sanierungsjahr", b.get("sanierungsjahr")), ("Fußbodenart", b.get("floor_type")), ("Zustand Fußboden", b.get("floor_state")), ("Zustand Wände", b.get("wall_state"))]:
                 y = draw_kv_pair(c, kk, val_str(vv), 60, y)
+            photos = b.get("photos") or []
+            if photos:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Bad)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos, 80, y, max_w=220, max_h=150)
+            if i == 0 and photos_baths:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Bäder - Kategorie)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos_baths, 80, y, max_w=220, max_h=150)
 
+    # Nebenräume / Abstellflächen
     y = new_page_if_needed(c, y)
-    y = draw_heading(c, "Außenbereich", 50, y)
-    for label, value in [("Dachform", f"{val_str(dachform)}{(' - '+dachform_sonst) if dachform_sonst else ''}"), ("Dacheindeckung", f"{val_str(dacheindeckung)}{(' - '+dacheindeckung_sonst) if dacheindeckung_sonst else ''}"), ("Fassade", val_str(fassade)), ("Wintergarten", val_str(wintergarten)), ("Wintergarten Fläche (m²)", val_str(locals().get("wintergarten_area",""))), ("Garten (m²)", val_str(garten_groesse)), ("Zustand Garten", val_str(garten_zustand)), ("Balkone Anzahl", val_str(balkon_anz)), ("Balkone Gesamtgröße (m²)", val_str(balkon_groesse)), ("Terrassen Anzahl", val_str(terrasse_anz)), ("Terrassen Gesamtgröße (m²)", val_str(terrasse_groesse)), ("Garage Anzahl", val_str(garage_anz)), ("Tiefgarage Anzahl", val_str(tiefgarage_anz)), ("Stellplatz Anzahl", val_str(stellplatz_anz)), ("Carport Anzahl", val_str(carport_anz)), ("Außen Sonstiges", val_str(aussen_sonstiges))]:
-        y = draw_kv_pair(c, label, value, 50, y)
+    y = draw_heading(c, "Keller / Abstellflächen / Nebenräume", 50, y)
+    if len(st.session_state.storages) == 0:
+        y = draw_kv_pair(c, "Nebenräume", "-", 50, y)
+    else:
+        for i,s in enumerate(st.session_state.storages):
+            y = new_page_if_needed(c, y, min_space=140)
+            c.setFont("Helvetica-Bold", 11); c.setFillColor(BLUE)
+            title = f"Abstellfläche {i+1}: {val_str(s.get('name'))}"
+            c.drawString(50, y, title)
+            text_width = c.stringWidth(title, "Helvetica-Bold", 11)
+            c.line(50, y-3, 50+text_width, y-3)
+            c.setFillColor(colors.black)
+            y -= 18
+            for kk,vv in [("Größe (m²)", s.get("area")), ("Nutzung", s.get("usage")), ("Zustand", s.get("zust"))]:
+                y = draw_kv_pair(c, kk, val_str(vv), 60, y)
+            photos = s.get("photos") or []
+            if photos:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Nebenräume)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos, 80, y, max_w=220, max_h=150)
+            if i == 0 and photos_storages:
+                y = new_page_if_needed(c, y, min_space=180)
+                y = draw_kv_pair(c, "Fotos (Nebenräume - Kategorie)", "-", 60, y)
+                y = draw_images_two_per_row(c, photos_storages, 80, y, max_w=220, max_h=150)
 
+    # Außenbereich category-level photos (also include photos_outside)
+    if photos_outside:
+        y = new_page_if_needed(c, y, min_space=180)
+        y = draw_heading(c, "Fotos - Außenbereich", 50, y)
+        y = draw_images_two_per_row(c, photos_outside, 80, y, max_w=220, max_h=150)
+
+    # technische Fotos
+    if photos_tech:
+        y = new_page_if_needed(c, y, min_space=180)
+        y = draw_heading(c, "Fotos - Technische Ausstattung", 50, y)
+        y = draw_images_two_per_row(c, photos_tech, 80, y, max_w=220, max_h=150)
+
+    # Technik details
     y = new_page_if_needed(c, y)
-    y = draw_heading(c, "Technische Ausstattung", 50, y)
+    y = draw_heading(c, "Technische Ausstattung (Details)", 50, y)
     for label, value in [("Heizung", val_str(heizung)), ("Heizung Baujahr", val_str(heizung_bj)), ("Zustand Heizung", val_str(heizung_zust)), ("Warmwasser", val_str(warmwasser)), ("Elektrik Hinweise", val_str(elektrik)), ("Zustand Elektrik", val_str(elektrik_zust)), ("Internet", val_str(internet)), ("Technik Sonstiges", val_str(tech_sonstiges))]:
         y = draw_kv_pair(c, label, value, 50, y)
 
+    # Dokumente
     y = new_page_if_needed(c, y)
     y = draw_heading(c, "Dokumente (hochgeladen)", 50, y)
     if not uploaded_docs:
@@ -402,6 +517,7 @@ if st.button("📄 PDF erzeugen", type="primary"):
             name = getattr(f, "name", str(f))
             y = draw_kv_pair(c, "-", name, 50, y)
 
+    # Sonstiges / Notizen
     y = new_page_if_needed(c, y)
     y = draw_heading(c, "Sonstiges / Notizen", 50, y)
     notes_text = val_str(freitext_sonstiges if 'freitext_sonstiges' in locals() else freitext_obj, "-")
@@ -415,6 +531,7 @@ if st.button("📄 PDF erzeugen", type="primary"):
     pdf_bytes = buffer.getvalue()
     buffer.close()
 
+    # Add footer page numbers using pypdf (if installed)
     if PdfReader is None:
         st.warning("pypdf nicht installiert: PDF wird ohne 'Seite x von y' ausgeliefert.")
         st.download_button("📥 PDF herunterladen", data=pdf_bytes, file_name=f"objektaufnahme_{adresse.replace(' ','_')}_{aufnahme_datum}.pdf", mime="application/pdf")

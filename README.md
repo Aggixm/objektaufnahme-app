@@ -1,7 +1,7 @@
-Aggixm Objektaufnahme - Version 2.2 (Deutsch)
+Aggixm Objektaufnahme - Version 2.3 (Deutsch)
 ------------------------------------------------
 Enthält:
-- app.py : Streamlit-App (Einzeldatei, iPad-optimiert, Deckblatt + zweispaltiges Exposé)
+- app.py : Streamlit-App (Einzeldatei, iPad-optimiert, Deckblatt + Exposé mit Fotos)
 - requirements.txt : streamlit, reportlab, pillow, pypdf
 
 Anleitung:
