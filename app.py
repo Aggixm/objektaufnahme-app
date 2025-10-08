@@ -1,4 +1,4 @@
-# app.py - Aggixm Objektaufnahme (iPad-optimiert, Deckblatt + zweispaltiges Exposé, Deutsch)
+# app.py - Aggixm Objektaufnahme v2.1 (iPad-optimiert, Deckblatt + zweispaltiges Exposé, Deutsch)
 import streamlit as st
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
@@ -6,6 +6,11 @@ from reportlab.lib.utils import ImageReader
 from PIL import Image
 import io
 import datetime
+try:
+    from pypdf import PdfReader, PdfWriter
+except Exception:
+    PdfReader = None
+    PdfWriter = None
 
 # --- Page config ---
 st.set_page_config(page_title="Objektaufnahme - Aggixm", page_icon="🏠", layout="wide")
@@ -16,6 +21,8 @@ st.markdown("Fülle das Formular. Am Ende: '📄 PDF erzeugen' → Deckblatt + z
 ZUSTAND = ["Neu", "Neuwertig", "Zufriedenstellend", "Abgenutzt"]
 FUSSBODEN = ["Teppich", "Laminat", "Parkett", "Fliese", "Vinyl", "Beton", "Sonstige"]
 GEBAEUDEART = ["Massivbau", "Holzbau", "Fertigbau", "Klinker", "Putzfassade", "Mischbauweise", "Sonstige"]
+DACHFORM_OPTIONS = ["Flachdach", "Satteldach", "Walmdach", "Pultdach", "Sonstiges"]
+DACHEINDECKUNG_OPTIONS = ["Dachpfanne", "Dachpappe", "Blech", "Ziegel", "Sonstiges"]
 
 # --- Session state für dynamische Bereiche ---
 if "rooms" not in st.session_state: st.session_state.rooms = []
@@ -74,8 +81,8 @@ with colp2:
 baujahr = st.text_input("Baujahr", max_chars=10)
 gebaeudeart = st.multiselect("Gebäudeart / Bauweise", GEBAEUDEART)
 gebaeudeart_sonstiges = st.text_input("Gebäudeart - Sonstiges (optional)")
-wohnflaeche = st.text_input("Wohnfläche / Nutzfläche (m²)")
-grundstueck = st.text_input("Grundstücksfläche (m²)")
+wohnflaeche = st.number_input("Wohnfläche (m²)", min_value=0.0, step=0.1, format="%.2f")
+grundstueck = st.number_input("Grundstücksfläche (m²)", min_value=0.0, step=0.1, format="%.2f")
 eigentuemer = st.text_input("Eigentümer / Ansprechpartner")
 
 cole1, cole2 = st.columns(2)
@@ -88,7 +95,7 @@ with cole2:
     if niessbrauch == "Ja":
         nies_info = st.text_input("Nießbrauch - Nutzungsumfang / Dauer")
 
-freitext_objekt_sonst = st.text_area("Sonstiges (Allgemein)")
+freitext_objekt = st.text_area("Sonstiges (Allgemein)")
 
 st.markdown("---")
 
@@ -107,7 +114,7 @@ if objektart in ["Eigentumswohnung (ETW)", "Mehrfamilienhaus (MFH)"]:
     mieteinnahmen_building = st.text_input("Mieteinnahmen (monatlich / jährlich, optional)")
 elif objektart == "Gewerbeobjekt":
     nutzung_art = st.text_input("Art der Nutzung (Büro, Laden, Lager, ...)")
-    gewerbeflaeche = st.text_input("Gewerbefläche (m²)")
+    gewerbeflaeche = st.number_input("Gewerbefläche (m²)", min_value=0.0, step=0.1, format="%.2f")
     raumhoehe = st.text_input("Raumhöhe (m)")
     bodenbelast = st.text_input("Bodenbelast / Bodenbelag")
     zugang_gewerbe = st.text_input("Zugang (z. B. ebenerdig, Rampe)")
@@ -143,7 +150,7 @@ def render_rooms():
         with st.expander(f"Raum {i+1}", expanded=False):
             rn = st.text_input("Bezeichnung (z. B. Wohnzimmer EG)", key=f"{keypref}_name")
             usage = st.text_input("Nutzung (z. B. Wohnen)", key=f"{keypref}_usage")
-            area = st.text_input("Fläche (m²)", key=f"{keypref}_area")
+            area = st.number_input("Größe (m²)", min_value=0.0, step=0.1, format="%.2f", key=f"{keypref}_area")
             floor_type = st.selectbox("Fußbodenart", FUSSBODEN, key=f"{keypref}_floor")
             floor_state = st.selectbox("Zustand Fußboden", ZUSTAND, key=f"{keypref}_floor_state")
             wall_state = st.selectbox("Zustand Wände", ZUSTAND, key=f"{keypref}_wall_state")
@@ -160,14 +167,19 @@ def render_kitchens():
         keypref = f"kitchen_{i}"
         with st.expander(f"Küche {i+1}", expanded=False):
             rn = st.text_input("Bezeichnung Küche", key=f"{keypref}_name")
+            area = st.number_input("Größe (m²)", min_value=0.0, step=0.1, format="%.2f", key=f"{keypref}_area")
             einbau = st.selectbox("Einbauküche vorhanden?", ["Nein","Ja"], key=f"{keypref}_einbau")
+            einbau_zust = None
+            if einbau == "Ja":
+                einbau_zust = st.selectbox("Zustand Einbauküche", ZUSTAND, key=f"{keypref}_einbau_zust")
             floor_type = st.selectbox("Fußbodenart", FUSSBODEN, key=f"{keypref}_floor")
             floor_state = st.selectbox("Zustand Fußboden", ZUSTAND, key=f"{keypref}_floor_state")
             wall_state = st.selectbox("Zustand Wände", ZUSTAND, key=f"{keypref}_wall_state")
             photos = st.file_uploader("Fotos Küche (mehrfach)", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{keypref}_photos")
             notes = st.text_area("Notizen", key=f"{keypref}_notes")
             st.session_state.kitchens[i].update({
-                "name": rn, "einbau": einbau, "floor_type": floor_type, "floor_state": floor_state, "wall_state": wall_state,
+                "name": rn, "area": area, "einbau": einbau, "einbau_zust": einbau_zust,
+                "floor_type": floor_type, "floor_state": floor_state, "wall_state": wall_state,
                 "photos": photos, "notes": notes
             })
 
@@ -176,6 +188,7 @@ def render_baths():
         keypref = f"bath_{i}"
         with st.expander(f"Bad/WC {i+1}", expanded=False):
             rn = st.text_input("Bezeichnung Bad/WC", key=f"{keypref}_name")
+            area = st.number_input("Größe (m²)", min_value=0.0, step=0.1, format="%.2f", key=f"{keypref}_area")
             art = st.selectbox("Art", ["Vollbad","Duschbad","Gäste-WC","WC separat","Sonstiges"], key=f"{keypref}_type")
             equip = st.text_input("Ausstattung (z. B. Dusche, Wanne)", key=f"{keypref}_equip")
             sanj = st.text_input("Sanierungsjahr (optional)", key=f"{keypref}_san")
@@ -185,7 +198,7 @@ def render_baths():
             photos = st.file_uploader("Fotos Bad (mehrfach)", type=["png","jpg","jpeg"], accept_multiple_files=True, key=f"{keypref}_photos")
             notes = st.text_area("Notizen", key=f"{keypref}_notes")
             st.session_state.baths[i].update({
-                "name": rn, "type": art, "equip": equip, "sanierungsjahr": sanj,
+                "name": rn, "area": area, "type": art, "equip": equip, "sanierungsjahr": sanj,
                 "floor_type": floor_type, "floor_state": floor_state, "wall_state": wall_state,
                 "photos": photos, "notes": notes
             })
@@ -195,7 +208,7 @@ def render_storages():
         keypref = f"stor_{i}"
         with st.expander(f"Abstellfläche {i+1}", expanded=False):
             rn = st.text_input("Bezeichnung (z. B. Kellerraum 1)", key=f"{keypref}_name")
-            area = st.text_input("Fläche (m²)", key=f"{keypref}_area")
+            area = st.number_input("Größe (m²)", min_value=0.0, step=0.1, format="%.2f", key=f"{keypref}_area")
             usage = st.text_input("Nutzung / Zweck", key=f"{keypref}_usage")
             zust = st.selectbox("Zustand", ZUSTAND, key=f"{keypref}_state")
             notes = st.text_area("Notizen", key=f"{keypref}_notes")
@@ -212,23 +225,35 @@ st.markdown("---")
 
 # --- Außenbereich ---
 st.header("Außenbereich")
-dachform = st.text_input("Dachform / Dacheindeckung")
+dachform = st.selectbox("Dachform", DACHFORM_OPTIONS)
+if dachform == "Sonstiges":
+    dachform_sonst = st.text_input("Dachform - Sonstiges")
+else:
+    dachform_sonst = ""
+dacheindeckung = st.selectbox("Dacheindeckung", DACHEINDECKUNG_OPTIONS)
+if dacheindeckung == "Sonstiges":
+    dacheindeckung_sonst = st.text_input("Dacheindeckung - Sonstiges")
+else:
+    dacheindeckung_sonst = ""
+dachform_text = f"{dachform}{(' - ' + dachform_sonst) if dachform_sonst else ''}"
+dacheindeckung_text = f"{dacheindeckung}{(' - ' + dacheindeckung_sonst) if dacheindeckung_sonst else ''}"
+
 fassade = st.multiselect("Fassade (Material)", ["Putz","Klinker","Holz","Mischbauweise","Sonstige"])
 fassade_sonstiges = st.text_input("Fassade - Sonstiges (optional)")
 wintergarten = st.selectbox("Wintergarten vorhanden?", ["Nein","Ja"])
 if wintergarten == "Ja":
-    wintergarten_area = st.text_input("Wintergarten Fläche (m²)")
+    wintergarten_area = st.number_input("Wintergarten Fläche (m²)", min_value=0.0, step=0.1, format="%.2f")
     wintergarten_zust = st.selectbox("Zustand Wintergarten", ZUSTAND)
-balkon_anz = st.text_input("Balkone - Anzahl")
-balkon_groesse = st.text_input("Balkone - Gesamtgröße (m²)")
-terrasse_anz = st.text_input("Terrassen - Anzahl")
-terrasse_groesse = st.text_input("Terrassen - Gesamtgröße (m²)")
-garten_groesse = st.text_input("Garten - Größe (m²)")
+balkon_anz = st.number_input("Balkone - Anzahl", min_value=0, step=1, value=0)
+balkon_groesse = st.number_input("Balkone - Gesamtgröße (m²)", min_value=0.0, step=0.1, format="%.2f")
+terrasse_anz = st.number_input("Terrassen - Anzahl", min_value=0, step=1, value=0)
+terrasse_groesse = st.number_input("Terrassen - Gesamtgröße (m²)", min_value=0.0, step=0.1, format="%.2f")
+garten_groesse = st.number_input("Garten - Größe (m²)", min_value=0.0, step=0.1, format="%.2f")
 garten_zustand = st.selectbox("Zustand Garten", ZUSTAND)
-garage_anz = st.text_input("Garage - Anzahl")
-tiefgarage_anz = st.text_input("Tiefgarage - Anzahl")
-stellplatz_anz = st.text_input("Stellplatz - Anzahl")
-carport_anz = st.text_input("Carport - Anzahl")
+garage_anz = st.number_input("Garage - Anzahl", min_value=0, step=1, value=0)
+tiefgarage_anz = st.number_input("Tiefgarage - Anzahl", min_value=0, step=1, value=0)
+stellplatz_anz = st.number_input("Stellplatz - Anzahl", min_value=0, step=1, value=0)
+carport_anz = st.number_input("Carport - Anzahl", min_value=0, step=1, value=0)
 aussen_sonstiges = st.text_area("Außenbereich - Sonstiges")
 
 st.markdown("---")
@@ -240,6 +265,7 @@ heizung_bj = st.text_input("Heizung Baujahr")
 heizung_zust = st.selectbox("Zustand Heizung", ZUSTAND)
 warmwasser = st.selectbox("Warmwasser", ["zentral","dezentral"])
 elektrik = st.text_input("Elektrik - Hinweise (Zähler, Absicherung)")
+elektrik_zust = st.selectbox("Zustand Elektrik", ZUSTAND)
 internet = st.selectbox("Internetanschluss", ["DSL","Glasfaser","Mobil","keine Angabe"])
 tech_sonstiges = st.text_area("Technik - Sonstiges")
 
@@ -298,7 +324,10 @@ if st.button("📄 PDF erzeugen", type="primary"):
     c.drawString(margin_x, y, f"Objektaufnahme - {val_str(objektart, 'Objekt')}")
     c.setFont("Helvetica", 12)
     c.drawString(margin_x, y - 30, f"Datum der Aufnahme: {aufnahme_datum}")
-    c.drawString(margin_x, y - 48, f"Adresse: {val_str(adresse,'keine Angabe')}, {val_str(plz,'') } {val_str(ort,'')}")
+    addr_line = f"{val_str(adresse,'keine Angabe')}"
+    if plz or ort:
+        addr_line = addr_line + f", {val_str(plz)} {val_str(ort)}"
+    c.drawString(margin_x, y - 48, f"Adresse: {addr_line}")
     c.drawString(margin_x, y - 66, f"Aufgenommen von: {val_str(teilnehmende,'nicht angegeben')}")
     c.setLineWidth(0.5)
     c.line(margin_x, y - 80, width - margin_x, y - 80)
@@ -311,7 +340,7 @@ if st.button("📄 PDF erzeugen", type="primary"):
 
     pairs = [
         ("Objektart", val_str(objektart)),
-        ("Adresse", f"{val_str(adresse,'keine Angabe')}, {val_str(plz,'') } {val_str(ort,'')}"),
+        ("Adresse", addr_line),
         ("Baujahr", val_str(baujahr)),
         ("Gebäudeart", val_str(gebaeudeart)),
         ("Wohnfläche (m²)", val_str(wohnflaeche)),
@@ -319,12 +348,13 @@ if st.button("📄 PDF erzeugen", type="primary"):
         ("Eigentümer", val_str(eigentuemer)),
         ("Erbbaurecht", val_str(erbbaurecht)),
         ("Nießbrauch", val_str(niessbrauch)),
-        ("Mieteinnahmen (Objekt)", val_str(mieteinnahmen or globals().get('mieteinnahmen_building',''))),
+        ("Mieteinnahmen (Objekt)", val_str(mieteinnahmen if mieteinnahmen else locals().get('mieteinnahmen_building',''))),
     ]
 
     left_x = margin_x
     right_x = margin_x + 300
     col_y = y
+
     for label, value in pairs:
         col_y = new_page_if_needed(c, col_y, min_space=80, width=width, height=height)
         col_y = draw_kv_pair(c, label, value, left_x, col_y)
@@ -354,12 +384,12 @@ if st.button("📄 PDF erzeugen", type="primary"):
         y = draw_kv_pair(c, "Räume", "keine", margin_x, y)
     else:
         for i, room in enumerate(st.session_state.rooms):
-            y = new_page_if_needed(c, y, 120, width, height)
+            y = new_page_if_needed(c, y, 140, width, height)
             title = f"Raum {i+1}: {val_str(room.get('name'))}"
             c.setFont("Helvetica-Bold", 10)
             c.drawString(margin_x, y, title)
             y -= 14
-            for k,v in [("Nutzung", room.get("usage")), ("Fläche (m²)", room.get("area")), ("Fußbodenart", room.get("floor_type")), ("Zustand Fußboden", room.get("floor_state")), ("Zustand Wände", room.get("wall_state"))]:
+            for k,v in [("Nutzung", room.get("usage")), ("Größe (m²)", room.get("area")), ("Fußbodenart", room.get("floor_type")), ("Zustand Fußboden", room.get("floor_state")), ("Zustand Wände", room.get("wall_state"))]:
                 y = draw_kv_pair(c, k, val_str(v), margin_x, y)
             notes = val_str(room.get("notes"), "")
             if notes and notes != "keine":
@@ -387,7 +417,7 @@ if st.button("📄 PDF erzeugen", type="primary"):
             c.setFont("Helvetica-Bold", 10)
             c.drawString(margin_x, y, f"Küche {i+1}: {val_str(k.get('name'))}")
             y -= 12
-            for kk, vv in [("Einbauküche", val_str(k.get("einbau"))), ("Fußbodenart", val_str(k.get("floor_type"))), ("Zustand Fußboden", val_str(k.get("floor_state"))), ("Zustand Wände", val_str(k.get("wall_state")))]:
+            for kk, vv in [("Größe (m²)", val_str(k.get("area"))), ("Einbauküche", val_str(k.get("einbau"))), ("Zustand Einbauküche", val_str(k.get("einbau_zust"))), ("Fußbodenart", val_str(k.get("floor_type"))), ("Zustand Fußboden", val_str(k.get("floor_state")))]:
                 y = draw_kv_pair(c, kk, vv, margin_x, y)
 
     y = new_page_if_needed(c, y, 120, width, height)
@@ -402,21 +432,21 @@ if st.button("📄 PDF erzeugen", type="primary"):
             c.setFont("Helvetica-Bold", 10)
             c.drawString(margin_x, y, f"Bad/WC {i+1}: {val_str(b.get('name'))}")
             y -= 12
-            for kk, vv in [("Art", val_str(b.get("type"))), ("Ausstattung", val_str(b.get("equip"))), ("Sanierungsjahr", val_str(b.get("sanierungsjahr"))), ("Fußbodenart", val_str(b.get("floor_type"))), ("Zustand Fußboden", val_str(b.get("floor_state"))), ("Zustand Wände", val_str(b.get("wall_state")))]:
+            for kk, vv in [("Größe (m²)", val_str(b.get("area"))), ("Art", val_str(b.get("type"))), ("Ausstattung", val_str(b.get("equip"))), ("Sanierungsjahr", val_str(b.get("sanierungsjahr"))), ("Fußbodenart", val_str(b.get("floor_type"))), ("Zustand Fußboden", val_str(b.get("floor_state"))), ("Zustand Wände", val_str(b.get("wall_state")))]:
                 y = draw_kv_pair(c, kk, vv, margin_x, y)
 
     y = new_page_if_needed(c, y, 120, width, height)
     c.setFont("Helvetica-Bold", 12)
     c.drawString(margin_x, y, "Außenbereich")
     y -= 14
-    for label, value in [("Dachform", val_str(dachform)), ("Fassade", val_str(fassade)), ("Wintergarten", val_str(wintergarten)), ("Wintergarten Fläche (m²)", val_str(globals().get("wintergarten_area",""))), ("Garten (m²)", val_str(garten_groesse)), ("Zustand Garten", val_str(garten_zustand)), ("Balkone Anzahl", val_str(balkon_anz)), ("Balkone Gesamtgröße", val_str(balkon_groesse)), ("Terrassen Anzahl", val_str(terrasse_anz)), ("Terrassen Gesamtgröße", val_str(terrasse_groesse)), ("Garage Anzahl", val_str(garage_anz)), ("Tiefgarage Anzahl", val_str(tiefgarage_anz)), ("Stellplatz Anzahl", val_str(stellplatz_anz)), ("Carport Anzahl", val_str(carport_anz)), ("Außen Sonstiges", val_str(aussen_sonstiges))]:
+    for label, value in [("Dachform", val_str(dachform_text)), ("Dacheindeckung", val_str(dacheindeckung_text)), ("Fassade", val_str(fassade)), ("Wintergarten", val_str(wintergarten)), ("Wintergarten Fläche (m²)", val_str(globals().get("wintergarten_area",""))), ("Garten (m²)", val_str(garten_groesse)), ("Zustand Garten", val_str(garten_zustand)), ("Balkone Anzahl", val_str(balkon_anz)), ("Balkone Gesamtgröße", val_str(balkon_groesse)), ("Terrassen Anzahl", val_str(terrasse_anz)), ("Terrassen Gesamtgröße", val_str(terrasse_groesse)), ("Garage Anzahl", val_str(garage_anz)), ("Tiefgarage Anzahl", val_str(tiefgarage_anz)), ("Stellplatz Anzahl", val_str(stellplatz_anz)), ("Carport Anzahl", val_str(carport_anz)), ("Außen Sonstiges", val_str(aussen_sonstiges))]:
         y = draw_kv_pair(c, label, value, margin_x, y)
 
     y = new_page_if_needed(c, y, 120, width, height)
     c.setFont("Helvetica-Bold", 12)
     c.drawString(margin_x, y, "Technische Ausstattung")
     y -= 14
-    for label, value in [("Heizung", val_str(heizung)), ("Heizung Baujahr", val_str(heizung_bj)), ("Zustand Heizung", val_str(heizung_zust)), ("Warmwasser", val_str(warmwasser)), ("Elektrik", val_str(elektrik)), ("Internet", val_str(internet)), ("Technik Sonstiges", val_str(tech_sonstiges))]:
+    for label, value in [("Heizung", val_str(heizung)), ("Heizung Baujahr", val_str(heizung_bj)), ("Zustand Heizung", val_str(heizung_zust)), ("Warmwasser", val_str(warmwasser)), ("Elektrik", val_str(elektrik)), ("Zustand Elektrik", val_str(elektrik_zust)), ("Internet", val_str(internet)), ("Technik Sonstiges", val_str(tech_sonstiges))]:
         y = draw_kv_pair(c, label, value, margin_x, y)
 
     y = new_page_if_needed(c, y, 120, width, height)
@@ -434,7 +464,7 @@ if st.button("📄 PDF erzeugen", type="primary"):
     c.setFont("Helvetica-Bold", 12)
     c.drawString(margin_x, y, "Sonstiges / Notizen")
     y -= 14
-    notes_text = val_str(freitext_objekt_sonst, "")
+    notes_text = val_str(freitext_sonstiges if 'freitext_sonstiges' in locals() else freitext_obj, "")
     if notes_text and notes_text != "keine":
         for ln in notes_text.splitlines():
             y = draw_kv_pair(c, "", ln, margin_x, y)
@@ -445,8 +475,36 @@ if st.button("📄 PDF erzeugen", type="primary"):
     pdf_bytes = buffer.getvalue()
     buffer.close()
 
-    st.success("PDF wurde erstellt.")
-    safe_name = adresse.replace(" ", "_") if adresse else "objekt"
-    st.download_button("📥 PDF herunterladen", data=pdf_bytes, file_name=f"objektaufnahme_{safe_name}_{aufnahme_datum}.pdf", mime="application/pdf")
+    # Second pass: try to add footer with total pages using pypdf
+    if PdfReader is None:
+        st.warning("Hinweis: Bibliothek für Seitenzahlen nicht installiert. PDF wird ohne 'Seite x von y' ausgeliefert.")
+        st.download_button("📥 PDF herunterladen", data=pdf_bytes, file_name=f"objektaufnahme_{adresse.replace(' ','_')}_{aufnahme_datum}.pdf", mime="application/pdf")
+    else:
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            writer = PdfWriter()
+            num_pages = len(reader.pages)
+            for i in range(num_pages):
+                page = reader.pages[i]
+                overlay_buf = io.BytesIO()
+                oc = canvas.Canvas(overlay_buf, pagesize=A4)
+                footer_text = f"{val_str(adresse,'keine Angabe')}    Seite {i+1} von {num_pages}"
+                oc.setFont("Helvetica", 8)
+                oc.drawString(margin_x, 18, footer_text)
+                oc.save()
+                overlay_buf.seek(0)
+                overlay_pdf = PdfReader(overlay_buf)
+                overlay_page = overlay_pdf.pages[0]
+                page.merge_page(overlay_page)
+                writer.add_page(page)
+            out_buf = io.BytesIO()
+            writer.write(out_buf)
+            out_buf.seek(0)
+            final_pdf = out_buf.getvalue()
+            st.success("PDF wurde erstellt.")
+            st.download_button("📥 PDF herunterladen", data=final_pdf, file_name=f"objektaufnahme_{adresse.replace(' ','_')}_{aufnahme_datum}.pdf", mime="application/pdf")
+        except Exception as e:
+            st.error(f"Fehler beim Erzeugen der finalen PDF mit Seitennummern: {e}")
+            st.download_button("📥 PDF herunterladen (Fallback)", data=pdf_bytes, file_name=f"objektaufnahme_{adresse.replace(' ','_')}_{aufnahme_datum}.pdf", mime="application/pdf")
 
 # EOF
