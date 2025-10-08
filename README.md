@@ -1,10 +1,12 @@
-# 🏠 Objektaufnahme-App
+Aggixm Objektaufnahme - Final Version (Deutsch)
+------------------------------------------------
+Enthält:
+- app.py : Streamlit-App (iPad-optimiert, Deckblatt + zweispaltiges Exposé)
+- requirements.txt : benötigte Python-Pakete
 
-Diese Streamlit-App ermöglicht die einfache Erfassung von Immobilienobjekten direkt im Browser (z. B. am iPad).  
-Am Ende kann ein PDF mit allen Eingaben heruntergeladen werden.
-
-## Start auf Streamlit Cloud
-1. Repository auf GitHub hochladen  
-2. Auf https://share.streamlit.io/ gehen  
-3. Dein Repository `aggixm/objektaufnahme-app` auswählen  
-4. Deploy klicken → App startet automatisch 🚀
+Anleitung:
+1. Lade die Dateien in dein GitHub-Repository (Root).
+2. Stelle sicher, dass requirements.txt die Pakete enthält: streamlit, reportlab, pillow
+3. Deploy in Streamlit Cloud oder starte lokal mit:
+   pip install -r requirements.txt
+   streamlit run app.py
